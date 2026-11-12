@@ -1,0 +1,21 @@
+* text=auto
+
+# Windows 入口和脚本使用 CRLF；BOM 由文件内容本身保留
+*.ps1 text eol=crlf
+*.xaml text eol=crlf
+*.cmd text eol=crlf
+*.vbs text eol=crlf
+*.iss text eol=crlf
+
+# CI / 文档保持 LF
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+
+*.dll binary
+*.exe binary
+*.png binary
+*.ico binary
+*.zip binary

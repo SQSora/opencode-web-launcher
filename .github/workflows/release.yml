@@ -1,0 +1,123 @@
+name: Build Release (C#)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (for example 1.0.1); leave empty to read VERSION'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build C# packages
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: powershell
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $version = $env:GITHUB_REF_NAME
+            if ($version.StartsWith('v')) { $version = $version.Substring(1) }
+          } elseif ($env:INPUT_VERSION) {
+            $version = $env:INPUT_VERSION
+          } else {
+            $version = (Get-Content -LiteralPath 'VERSION' -Raw).Trim()
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') {
+            throw "Invalid version: $version"
+          }
+          Set-Content -LiteralPath 'VERSION' -Value $version -Encoding ASCII -NoNewline
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
+
+      - name: Install Inno Setup 6
+        id: inno
+        shell: powershell
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = Get-ChildItem -Path `
+            'C:\Program Files (x86)\Inno Setup 6\ISCC.exe', `
+            'C:\Program Files\Inno Setup 6\ISCC.exe', `
+            'C:\Program Files (x86)\Inno Setup*\ISCC.exe', `
+            'C:\Program Files\Inno Setup*\ISCC.exe' `
+            -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw 'ISCC.exe not found' }
+          "iscc=$($iscc.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
+
+      - name: Build portable zip and self-test
+        shell: powershell
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          .\tools\Build-CSharp.ps1 -Version $version -RunTests
+          if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE" }
+          New-Item -ItemType Directory -Path 'dist' -Force | Out-Null
+          Move-Item -LiteralPath 'build\OpenCodeLauncher-csharp.zip' `
+            -Destination ("dist\OpenCodeLauncher-$version-portable.zip") -Force
+
+      - name: Build user installer
+        shell: powershell
+        run: |
+          $iscc = "${{ steps.inno.outputs.iscc }}"
+          $version = "${{ steps.version.outputs.version }}"
+          & $iscc "/DMyAppVersion=$version" "installer\OpenCodeLauncherCSharp.iss"
+          if ($LASTEXITCODE -ne 0) { throw "User installer failed with exit code $LASTEXITCODE" }
+
+      - name: Build System installer
+        shell: powershell
+        run: |
+          $iscc = "${{ steps.inno.outputs.iscc }}"
+          $version = "${{ steps.version.outputs.version }}"
+          & $iscc "/DMyAppVersion=$version" "/DMACHINE_BUILD=1" "installer\OpenCodeLauncherCSharp.iss"
+          if ($LASTEXITCODE -ne 0) { throw "System installer failed with exit code $LASTEXITCODE" }
+
+      - name: Hash artifacts
+        shell: powershell
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $files = Get-ChildItem -Path "dist\OpenCodeLauncher-$version-*" -File |
+            Where-Object { $_.Extension -in '.exe', '.zip' }
+          if (-not $files) { throw 'No build artifacts found' }
+          foreach ($file in $files) {
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($file.Name)" | Out-File -FilePath ($file.FullName + '.sha256') -Encoding ascii
+          }
+          Get-ChildItem -Path "dist\OpenCodeLauncher-$version-*" -File | Select-Object Name, Length
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCodeLauncher-CSharp-${{ steps.version.outputs.version }}
+          path: |
+            dist/OpenCodeLauncher-${{ steps.version.outputs.version }}-*.zip
+            dist/OpenCodeLauncher-${{ steps.version.outputs.version }}-*.exe
+            dist/OpenCodeLauncher-${{ steps.version.outputs.version }}-*.sha256
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/OpenCodeLauncher-${{ steps.version.outputs.version }}-*.zip
+            dist/OpenCodeLauncher-${{ steps.version.outputs.version }}-*.exe
+            dist/OpenCodeLauncher-${{ steps.version.outputs.version }}-*.sha256
+          generate_release_notes: true
+          fail_on_unmatched_files: true

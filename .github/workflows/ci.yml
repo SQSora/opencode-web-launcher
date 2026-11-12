@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate scripts and XAML
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse PowerShell scripts
+        shell: powershell
+        run: |
+          $failed = $false
+          Get-ChildItem -Recurse -Filter '*.ps1' -File | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors -and $errors.Count -gt 0) {
+              $failed = $true
+              $errors | ForEach-Object {
+                Write-Host ("{0}:{1} {2}" -f $_.Extent.File, $_.Extent.StartLineNumber, $_.Message)
+              }
+            }
+          }
+          if ($failed) { throw 'PowerShell 语法检查失败' }
+
+      - name: Validate XAML is well-formed
+        shell: powershell
+        run: |
+          $failed = $false
+          $details = New-Object System.Text.StringBuilder
+          $files = @(Get-ChildItem -Path 'app' -Filter '*.xaml' -File)
+          Write-Host ("Found {0} XAML files" -f $files.Count)
+          foreach ($file in $files) {
+            Write-Host ("Checking {0}" -f $file.FullName)
+            try {
+              # 用 .NET 直接读 UTF-8，避免 Get-Content 在不同 PowerShell 版本上对 BOM 的差异
+              $content = [System.IO.File]::ReadAllText($file.FullName, [System.Text.Encoding]::UTF8)
+              $document = New-Object System.Xml.XmlDocument
+              $document.LoadXml($content)
+              Write-Host '  OK'
+            } catch {
+              $failed = $true
+              $message = "XAML invalid: {0}: {1}" -f $file.Name, $_.Exception.Message
+              Write-Host ('  ' + $message)
+              [void]$details.AppendLine($message)
+            }
+          }
+          if ($failed) {
+            $details.ToString() | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            throw 'XAML 格式检查失败'
+          }

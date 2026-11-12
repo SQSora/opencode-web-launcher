@@ -1,0 +1,88 @@
+name: Build CSharp WPF
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: csharp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build, test and package
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and self-test
+        shell: powershell
+        run: |
+          .\tools\Build-CSharp.ps1 -RunTests
+          if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE" }
+
+      - name: Install Inno Setup 6
+        id: inno
+        shell: powershell
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = Get-ChildItem -Path `
+            'C:\Program Files (x86)\Inno Setup 6\ISCC.exe', `
+            'C:\Program Files\Inno Setup 6\ISCC.exe', `
+            'C:\Program Files (x86)\Inno Setup*\ISCC.exe', `
+            'C:\Program Files\Inno Setup*\ISCC.exe' `
+            -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw 'ISCC.exe not found' }
+          "iscc=$($iscc.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
+
+      - name: Package portable zip
+        shell: powershell
+        run: |
+          $version = (Get-Content -LiteralPath 'VERSION' -Raw).Trim()
+          New-Item -ItemType Directory -Path 'dist' -Force | Out-Null
+          Move-Item -LiteralPath 'build\OpenCodeLauncher-csharp.zip' `
+            -Destination ("dist\OpenCodeLauncher-$version-portable.zip") -Force
+
+      - name: Build user installer
+        shell: powershell
+        run: |
+          $version = (Get-Content -LiteralPath 'VERSION' -Raw).Trim()
+          & "${{ steps.inno.outputs.iscc }}" "/DMyAppVersion=$version" "installer\OpenCodeLauncherCSharp.iss"
+          if ($LASTEXITCODE -ne 0) { throw "User installer failed with exit code $LASTEXITCODE" }
+
+      - name: Build System installer
+        shell: powershell
+        run: |
+          $version = (Get-Content -LiteralPath 'VERSION' -Raw).Trim()
+          & "${{ steps.inno.outputs.iscc }}" "/DMyAppVersion=$version" "/DMACHINE_BUILD=1" "installer\OpenCodeLauncherCSharp.iss"
+          if ($LASTEXITCODE -ne 0) { throw "System installer failed with exit code $LASTEXITCODE" }
+
+      - name: Hash artifacts
+        shell: powershell
+        run: |
+          $version = (Get-Content -LiteralPath 'VERSION' -Raw).Trim()
+          $files = Get-ChildItem -Path "dist\OpenCodeLauncher-$version-*" -File |
+            Where-Object { $_.Extension -in '.exe', '.zip' }
+          if (-not $files) { throw 'No build artifacts found' }
+          foreach ($file in $files) {
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($file.Name)" | Out-File -FilePath ($file.FullName + '.sha256') -Encoding ascii
+          }
+          Get-ChildItem -Path "dist\OpenCodeLauncher-$version-*" -File | Select-Object Name, Length
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCodeLauncher-CSharp
+          path: |
+            dist/OpenCodeLauncher-*-portable.zip
+            dist/OpenCodeLauncher-*-user.exe
+            dist/OpenCodeLauncher-*-system.exe
+            dist/OpenCodeLauncher-*.sha256
+          if-no-files-found: error
