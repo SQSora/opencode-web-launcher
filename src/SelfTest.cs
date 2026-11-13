@@ -28,6 +28,17 @@ namespace OpenCodeLauncher
             var urls = AccessUrlBuilder.GetAccessUrls("http://0.0.0.0:28894", string.Empty);
             Check(failures, urls.Contains("http://127.0.0.1:28894"), "access urls: loopback");
 
+            var pairCode = AccessUrlBuilder.GetPairCode("  http://127.0.0.1:28894/auth/connect/AbC-123  ");
+            Check(failures, string.Equals(pairCode, "AbC-123", StringComparison.Ordinal), "pair: parse code");
+            Check(failures, string.Equals(
+                AccessUrlBuilder.BuildPairUrl("http://192.168.1.101:28894", "AbC-123"),
+                "http://192.168.1.101:28894/auth/connect/AbC-123",
+                StringComparison.Ordinal), "pair: build ipv4 link");
+            Check(failures, string.Equals(
+                AccessUrlBuilder.BuildPairUrl("http://[::1]:28894", "AbC-123"),
+                "http://[::1]:28894/auth/connect/AbC-123",
+                StringComparison.Ordinal), "pair: build ipv6 link");
+
             RunProcessTests(failures);
             RunConfigTests(failures);
 
@@ -43,8 +54,9 @@ namespace OpenCodeLauncher
                     "StatusText", "UrlText", "BtnStart", "BtnRestart", "BtnStop", "BtnWebToggle",
                     "BtnBrowser", "BtnAccess", "BtnSettings", "BtnTray", "WebHost", "Overlay",
                     "BtnOverlayStart", "BtnOverlayShow", "BtnOverlayLogin", "BtnOverlayRetry",
-                    "AccessPopup", "AccessCard", "AccessUrlList", "AccessHint", "AccessOpenMode",
-                    "AccessModeLabel", "OverlayOpenMode", "OverlayAccessModeLabel", "LogPanel",
+                    "AccessPopup", "AccessCard", "AccessUrlList", "AccessHint", "AccessCodeMode",
+                    "AccessCodeLabel", "AccessPairStatus", "AccessRefreshPair",
+                    "OverlayCodeMode", "OverlayCodeLabel", "OverlayPairStatus", "OverlayRefreshPair", "LogPanel",
                     "LogBox", "ExeText", "ActionText"
                 };
                 foreach (var name in mainNames)
@@ -162,7 +174,7 @@ namespace OpenCodeLauncher
                 File.WriteAllText(path, "{ this is not json", new UTF8Encoding(false));
 
                 var fallback = LauncherConfig.LoadFrom(path);
-                Check(failures, fallback.AutoStart && fallback.CloseToTray && fallback.SuspendOnHide, "config: malformed falls back to defaults");
+                Check(failures, fallback.AutoStart && fallback.CloseToTray && fallback.SuspendOnHide && fallback.AccessCodeMode, "config: malformed falls back to defaults");
                 Check(failures, File.Exists(path + ".bad"), "config: malformed file backup");
 
                 fallback.OpenCodePath = @"C:\test\opencode.exe";
@@ -175,6 +187,7 @@ namespace OpenCodeLauncher
                 var reloaded = LauncherConfig.LoadFrom(path);
                 Check(failures, string.Equals(reloaded.OpenCodePath, @"C:\test\opencode.exe", StringComparison.Ordinal), "config: round trip path");
                 Check(failures, reloaded.Window.Width == 1200 && reloaded.Window.Height == 700, "config: round trip window");
+                Check(failures, reloaded.AccessCodeMode, "config: access code mode default");
             }
             catch (Exception ex)
             {

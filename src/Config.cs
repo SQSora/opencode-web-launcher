@@ -21,7 +21,7 @@ namespace OpenCodeLauncher
         public bool CloseToTray = true;
         public bool StopOnExit;
         public bool SuspendOnHide = true;
-        public bool AccessOpenMode;
+        public bool AccessCodeMode = true;
         public WindowConfig Window = new WindowConfig();
 
         public static LauncherConfig Load()
@@ -51,7 +51,7 @@ namespace OpenCodeLauncher
                 config.CloseToTray = Json.GetBool(data, "closeToTray", true);
                 config.StopOnExit = Json.GetBool(data, "stopOnExit", false);
                 config.SuspendOnHide = Json.GetBool(data, "suspendOnHide", true);
-                config.AccessOpenMode = Json.GetBool(data, "accessOpenMode", false);
+                config.AccessCodeMode = Json.GetBool(data, "accessCodeMode", true);
 
                 var window = Json.GetObject(data, "window");
                 if (window != null)
@@ -118,7 +118,7 @@ namespace OpenCodeLauncher
             data["closeToTray"] = CloseToTray;
             data["stopOnExit"] = StopOnExit;
             data["suspendOnHide"] = SuspendOnHide;
-            data["accessOpenMode"] = AccessOpenMode;
+            data["accessCodeMode"] = AccessCodeMode;
             data["window"] = window;
             try
             {

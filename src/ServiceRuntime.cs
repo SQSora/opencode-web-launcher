@@ -175,6 +175,30 @@ namespace OpenCodeLauncher
             return urls;
         }
 
+        public static string GetPairCode(string output)
+        {
+            if (string.IsNullOrEmpty(output)) return string.Empty;
+            var match = Regex.Match(output, "/auth/connect/([A-Za-z0-9_-]+)", RegexOptions.IgnoreCase);
+            return match.Success ? match.Groups[1].Value : string.Empty;
+        }
+
+        public static string BuildPairUrl(string accessUrl, string code)
+        {
+            if (string.IsNullOrEmpty(accessUrl) || string.IsNullOrEmpty(code)) return accessUrl;
+            try
+            {
+                var builder = new UriBuilder(accessUrl);
+                builder.Path = "/auth/connect/" + code;
+                builder.Query = string.Empty;
+                builder.Fragment = string.Empty;
+                return builder.Uri.AbsoluteUri;
+            }
+            catch
+            {
+                return accessUrl.TrimEnd('/') + "/auth/connect/" + code;
+            }
+        }
+
         private static bool IsWildcard(string host)
         {
             return string.Equals(host, "0.0.0.0", StringComparison.OrdinalIgnoreCase) ||

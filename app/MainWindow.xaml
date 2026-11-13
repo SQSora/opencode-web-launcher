@@ -46,7 +46,7 @@
                     <TextBlock x:Name="UrlText" Text="—" Foreground="#7E8899" FontSize="11.5"
                                FontFamily="Cascadia Mono, Consolas" Margin="12,0,0,0"
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                               MaxWidth="300" Cursor="Hand" ToolTip="点击复制服务地址"/>
+                               MaxWidth="300" Cursor="Hand" ToolTip="点击地址复制；Ctrl+点击在浏览器打开。"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -88,17 +88,21 @@
                                Margin="0,10,0,0" LineHeight="20"/>
                     <StackPanel x:Name="OverlayAddressModeRow" Orientation="Horizontal" HorizontalAlignment="Center"
                                 Margin="0,12,0,0" Visibility="Collapsed">
-                        <ToggleButton x:Name="OverlayOpenMode" Style="{StaticResource Switch}" VerticalAlignment="Center"
-                                      ToolTip="关闭：点击复制；打开：点击生成一次性登录链接"
-                                      AutomationProperties.Name="点击地址打开一次性链接"/>
-                        <TextBlock x:Name="OverlayAccessModeLabel" Text="点击地址复制" Foreground="{StaticResource TextBrush}" FontSize="11.5"
+                        <ToggleButton x:Name="OverlayCodeMode" Style="{StaticResource Switch}" VerticalAlignment="Center"
+                                      ToolTip="开启后地址显示为带 code 的一次性链接，5 分钟内有效"
+                                      AutomationProperties.Name="使用一次性登录链接"/>
+                        <TextBlock x:Name="OverlayCodeLabel" Text="使用一次性链接" Foreground="{StaticResource TextBrush}" FontSize="11.5"
                                    Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="OverlayPairStatus" FontSize="11" Foreground="{StaticResource MutedBrush}"
+                                   Margin="8,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+                        <Button x:Name="OverlayRefreshPair" Content="刷新" Style="{StaticResource StatusLink}"
+                                Margin="4,0,0,0" VerticalAlignment="Center" Visibility="Collapsed" ToolTip="重新生成一次性链接"/>
                     </StackPanel>
                     <ScrollViewer x:Name="OverlayAddressScroll" MaxHeight="220" VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled" Margin="0,14,0,0" Visibility="Collapsed">
                         <StackPanel x:Name="OverlayAddressList"/>
                     </ScrollViewer>
-                    <TextBlock x:Name="OverlayAddressHint" FontSize="11" Foreground="{StaticResource MutedBrush}"
+                    <TextBlock x:Name="OverlayAddressHint" Text="点击地址复制；Ctrl+点击在浏览器打开。" FontSize="11" Foreground="{StaticResource MutedBrush}"
                                TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0" Visibility="Collapsed"/>
                     <StackPanel x:Name="OverlayActions" Orientation="Horizontal" HorizontalAlignment="Center"
                                 Margin="0,22,0,0">
@@ -171,17 +175,21 @@
                                 HorizontalAlignment="Right" Padding="6,2" FontSize="12" ToolTip="关闭"/>
                     </Grid>
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <ToggleButton x:Name="AccessOpenMode" Style="{StaticResource Switch}" VerticalAlignment="Center"
-                                      ToolTip="关闭：点击复制；打开：点击生成一次性登录链接"
-                                      AutomationProperties.Name="点击地址打开一次性链接"/>
-                        <TextBlock x:Name="AccessModeLabel" Text="点击地址复制" Foreground="{StaticResource TextBrush}"
+                        <ToggleButton x:Name="AccessCodeMode" Style="{StaticResource Switch}" VerticalAlignment="Center"
+                                      ToolTip="开启后地址显示为带 code 的一次性链接，5 分钟内有效"
+                                      AutomationProperties.Name="使用一次性登录链接"/>
+                        <TextBlock x:Name="AccessCodeLabel" Text="使用一次性链接" Foreground="{StaticResource TextBrush}"
                                    FontSize="11.5" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="AccessPairStatus" FontSize="11" Foreground="{StaticResource MutedBrush}"
+                                   Margin="8,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+                        <Button x:Name="AccessRefreshPair" Content="刷新" Style="{StaticResource StatusLink}"
+                                Margin="4,0,0,0" VerticalAlignment="Center" Visibility="Collapsed" ToolTip="重新生成一次性链接"/>
                     </StackPanel>
                     <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled" Margin="0,10,0,0">
                         <StackPanel x:Name="AccessUrlList"/>
                     </ScrollViewer>
-                    <TextBlock x:Name="AccessHint" FontSize="11" Foreground="{StaticResource MutedBrush}"
+                    <TextBlock x:Name="AccessHint" Text="点击地址复制；Ctrl+点击在浏览器打开。" FontSize="11" Foreground="{StaticResource MutedBrush}"
                                TextWrapping="Wrap" Margin="0,10,0,0" LineHeight="17"/>
                 </StackPanel>
             </Border>

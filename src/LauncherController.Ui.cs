@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -43,6 +44,12 @@ namespace OpenCodeLauncher
             _urlText.MouseLeftButtonUp += delegate
             {
                 if (string.IsNullOrEmpty(_serviceUrl)) return;
+                if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+                {
+                    if (_runner.OpenExternalUrl(_serviceUrl)) SetAction("已在浏览器打开 " + _serviceUrl);
+                    else SetAction("打开浏览器失败");
+                    return;
+                }
                 try
                 {
                     Clipboard.SetText(_serviceUrl);
@@ -96,10 +103,12 @@ namespace OpenCodeLauncher
 
         private void WireAccessMode()
         {
-            _accessOpenModeToggle.Checked += delegate { SetAccessOpenMode(true); };
-            _accessOpenModeToggle.Unchecked += delegate { SetAccessOpenMode(false); };
-            _overlayOpenModeToggle.Checked += delegate { SetAccessOpenMode(true); };
-            _overlayOpenModeToggle.Unchecked += delegate { SetAccessOpenMode(false); };
+            _accessCodeModeToggle.Checked += delegate { SetAccessCodeMode(true); };
+            _accessCodeModeToggle.Unchecked += delegate { SetAccessCodeMode(false); };
+            _overlayCodeModeToggle.Checked += delegate { SetAccessCodeMode(true); };
+            _overlayCodeModeToggle.Unchecked += delegate { SetAccessCodeMode(false); };
+            _accessRefreshPair.Click += delegate { EnsurePairCodeAsync(true); };
+            _overlayRefreshPair.Click += delegate { EnsurePairCodeAsync(true); };
             SyncAccessModeUi();
         }
 
@@ -154,7 +163,7 @@ namespace OpenCodeLauncher
                 _serviceRawUrl = runtime.Url;
                 _servicePid = runtime.Pid;
                 _urlText.Text = url;
-                _urlText.ToolTip = url;
+                _urlText.ToolTip = AccessHintText;
                 if (string.IsNullOrEmpty(_operation) && _serviceState != ServiceUiState.Running)
                 {
                     SetUiState(ServiceUiState.Running);
@@ -178,11 +187,7 @@ namespace OpenCodeLauncher
         private void ShowHiddenPlaceholder()
         {
             var serviceAlive = IsServiceAlive();
-            var message = "后台服务仍在运行。点击地址复制，Ctrl+点击在浏览器打开；或点“显示页面”恢复界面。";
-            if (_accessOpenMode)
-            {
-                message = "后台服务仍在运行。点击地址打开一次性登录链接；或点“显示页面”恢复界面。";
-            }
+            var message = "后台服务仍在运行。";
             if (!string.IsNullOrEmpty(_operation))
             {
                 message = "服务操作正在执行，请稍候；完成后会自动更新页面状态。";
@@ -196,10 +201,10 @@ namespace OpenCodeLauncher
             SyncAccessModeUi();
             if (serviceAlive)
             {
-                var urls = AccessUrlBuilder.GetAccessUrls(_serviceRawUrl, _serviceUrl);
-                SetAccessRows(_overlayAddressList, urls);
+                SetAccessRows(_overlayAddressList, GetDisplayAccessUrls());
                 _overlayAddressHint.Visibility = Visibility.Visible;
                 UpdateAccessModeHint();
+                EnsurePairCodeAsync(false);
             }
             else
             {
@@ -214,55 +219,199 @@ namespace OpenCodeLauncher
             _syncAccessMode = true;
             try
             {
-                _accessOpenModeToggle.IsChecked = _accessOpenMode;
-                _overlayOpenModeToggle.IsChecked = _accessOpenMode;
-                var label = _accessOpenMode ? "点击地址打开一次性登录链接" : "点击地址复制";
-                _accessModeLabel.Text = label;
-                _overlayAccessModeLabel.Text = label;
+                _accessCodeModeToggle.IsChecked = _accessCodeMode;
+                _overlayCodeModeToggle.IsChecked = _accessCodeMode;
+                _accessCodeLabel.Text = "使用一次性链接";
+                _overlayCodeLabel.Text = "使用一次性链接";
+                var visibility = _accessCodeMode ? Visibility.Visible : Visibility.Collapsed;
+                _accessPairStatus.Visibility = visibility;
+                _overlayPairStatus.Visibility = visibility;
+                _accessRefreshPair.Visibility = visibility;
+                _overlayRefreshPair.Visibility = visibility;
             }
             finally
             {
                 _syncAccessMode = false;
             }
+            UpdatePairStatus();
         }
 
-        private void SetAccessOpenMode(bool enabled)
+        private void SetAccessCodeMode(bool enabled)
         {
             if (_syncAccessMode) return;
-            _accessOpenMode = enabled;
-            _config.AccessOpenMode = enabled;
+            _accessCodeMode = enabled;
+            _config.AccessCodeMode = enabled;
             SyncAccessModeUi();
             UpdateAccessModeHint();
             _config.Save();
+            if (enabled)
+            {
+                EnsurePairCodeAsync(false);
+                UpdateAccessSurfaces();
+            }
+            else
+            {
+                ClearPairCode();
+                UpdateAccessSurfaces();
+            }
         }
 
         private void UpdateAccessModeHint()
         {
-            if (_accessHint != null)
+            if (_accessHint != null) _accessHint.Text = AccessHintText;
+            if (_overlayAddressHint != null && _overlayAddressHint.Visibility == Visibility.Visible)
             {
-                if (_accessOpenMode)
+                _overlayAddressHint.Text = AccessHintText;
+            }
+        }
+
+        private void UpdatePairStatus()
+        {
+            if (_accessPairStatus == null || _overlayPairStatus == null) return;
+            var text = string.Empty;
+            if (_accessCodeMode)
+            {
+                if (_pairCodeBusy)
                 {
-                    _accessHint.Text = "点击地址打开一次性登录链接；Ctrl+点击复制。\n一次性链接 5 分钟内有效。";
+                    text = "生成中…";
+                }
+                else if (!IsServiceAlive())
+                {
+                    text = "服务未运行";
+                }
+                else if (_pairCodeFailed)
+                {
+                    text = string.IsNullOrEmpty(_pairCode) ? "生成失败" : "刷新失败";
+                }
+                else if (_pairCodeUsed)
+                {
+                    text = "已使用";
+                }
+                else if (string.IsNullOrEmpty(_pairCode) || !_pairCodeIssuedAt.HasValue)
+                {
+                    text = "未生成";
                 }
                 else
                 {
-                    _accessHint.Text = "点击地址复制；Ctrl+点击在浏览器打开。\n直接访问需要登录：用户名 opencode，密码见 service.json 的 password。";
+                    var remaining = PairCodeLifetime - (DateTime.UtcNow - _pairCodeIssuedAt.Value);
+                    if (remaining <= TimeSpan.Zero)
+                    {
+                        text = "已过期";
+                    }
+                    else
+                    {
+                        text = "剩余 " + ((int)remaining.TotalMinutes).ToString(CultureInfo.InvariantCulture) +
+                               ":" + remaining.Seconds.ToString("00", CultureInfo.InvariantCulture);
+                    }
                 }
             }
 
-            if (_overlayAddressHint != null && _overlayAddressHint.Visibility == Visibility.Visible)
+            if (_accessRefreshPair != null) _accessRefreshPair.IsEnabled = !_pairCodeBusy;
+            if (_overlayRefreshPair != null) _overlayRefreshPair.IsEnabled = !_pairCodeBusy;
+            if (string.Equals(text, _lastPairStatusText, StringComparison.Ordinal)) return;
+            _lastPairStatusText = text;
+            _accessPairStatus.Text = text;
+            _overlayPairStatus.Text = text;
+        }
+
+        private void ClearPairCode()
+        {
+            _pairCodeGeneration++;
+            _pairCode = string.Empty;
+            _pairCodeIssuedAt = null;
+            _pairCodeUsed = false;
+            _pairCodeBusy = false;
+            _pairCodeFailed = false;
+            _lastPairStatusText = null;
+            UpdatePairStatus();
+        }
+
+        private async void EnsurePairCodeAsync(bool force)
+        {
+            if (!_accessCodeMode) return;
+            if (_pairCodeBusy) return;
+            if (!force)
             {
-                _overlayAddressHint.Text = _accessOpenMode
-                    ? "点击地址打开一次性登录链接；Ctrl+点击复制。"
-                    : "点击地址复制；Ctrl+点击在浏览器打开。用户名 opencode，密码见 service.json。";
+                if (!string.IsNullOrEmpty(_pairCode) && _pairCodeIssuedAt.HasValue &&
+                    !_pairCodeUsed && DateTime.UtcNow - _pairCodeIssuedAt.Value < PairCodeLifetime)
+                {
+                    return;
+                }
+                if (_pairCodeFailed) return;
             }
 
-            if (_webHidden && IsServiceAlive() && _overlayMessage != null)
+            if (string.IsNullOrEmpty(_openCodePath) || !IsServiceAlive())
             {
-                _overlayMessage.Text = _accessOpenMode
-                    ? "后台服务仍在运行。点击地址打开一次性登录链接；或点“显示页面”恢复界面。"
-                    : "后台服务仍在运行。点击地址复制，Ctrl+点击在浏览器打开；或点“显示页面”恢复界面。";
+                _pairCodeFailed = true;
+                UpdatePairStatus();
+                return;
             }
+
+            _pairCodeBusy = true;
+            _pairCodeFailed = false;
+            var generation = ++_pairCodeGeneration;
+            UpdatePairStatus();
+            try
+            {
+                var commands = new List<string[]>();
+                commands.Add(new[] { "pair" });
+                var result = await _runner.RunAsync(_openCodePath, commands, 30000);
+                if (generation != _pairCodeGeneration || !_accessCodeMode) return;
+
+                var code = AccessUrlBuilder.GetPairCode(result.Output);
+                if (string.IsNullOrEmpty(code))
+                {
+                    _pairCodeFailed = true;
+                    Logger.Warn("生成一次性访问链接失败: " + SecretMasker.Mask(result.Output ?? string.Empty));
+                    SetAction("生成一次性链接失败");
+                    return;
+                }
+
+                _pairCode = code;
+                _pairCodeIssuedAt = DateTime.UtcNow;
+                _pairCodeUsed = false;
+                _pairCodeFailed = false;
+                Logger.Info("已生成一次性访问链接");
+                SetAction("已生成一次性链接，5 分钟内有效");
+                UpdateAccessSurfaces();
+            }
+            catch (Exception ex)
+            {
+                if (generation == _pairCodeGeneration)
+                {
+                    _pairCodeFailed = true;
+                    Logger.Warn("生成一次性访问链接失败: " + SecretMasker.Mask(ex.Message));
+                    SetAction("生成一次性链接失败");
+                }
+            }
+            finally
+            {
+                if (generation == _pairCodeGeneration)
+                {
+                    _pairCodeBusy = false;
+                    UpdatePairStatus();
+                }
+            }
+        }
+
+        private IList<string> GetDisplayAccessUrls()
+        {
+            var urls = AccessUrlBuilder.GetAccessUrls(_serviceRawUrl, _serviceUrl);
+            if (!_accessCodeMode || string.IsNullOrEmpty(_pairCode)) return urls;
+
+            var result = new List<string>();
+            foreach (var url in urls)
+            {
+                if (string.IsNullOrEmpty(url)) continue;
+                result.Add(AccessUrlBuilder.BuildPairUrl(url, _pairCode));
+            }
+            return result;
+        }
+
+        private void UpdateAccessSurfaces()
+        {
+            if (_accessPopup != null && _accessPopup.IsOpen) SetAccessPopupContent();
+            if (_webHidden) ShowHiddenPlaceholder();
         }
 
         private void SetAccessPopupContent()
@@ -277,20 +426,24 @@ namespace OpenCodeLauncher
                 empty.FontSize = 12;
                 empty.Margin = new Thickness(2);
                 _accessUrlList.Children.Add(empty);
-                _accessHint.Text = "启动后台服务后即可获取访问地址。";
+                _accessHint.Text = AccessHintText;
                 return;
             }
 
-            SetAccessRows(_accessUrlList, urls);
+            SetAccessRows(_accessUrlList, GetDisplayAccessUrls());
             UpdateAccessModeHint();
+            EnsurePairCodeAsync(false);
         }
 
         private void ShowAccessPopup()
         {
             SyncAccessModeUi();
+            if (_accessCodeMode && !_pairCodeBusy) _pairCodeFailed = false;
             SetAccessPopupContent();
             _accessPopup.PlacementTarget = _btnAccess;
             _accessPopup.IsOpen = true;
+            if (!string.IsNullOrEmpty(_pairCode)) SetAccessRows(_accessUrlList, GetDisplayAccessUrls());
+            EnsurePairCodeAsync(false);
             _accessCard.Focus();
         }
 
@@ -326,6 +479,8 @@ namespace OpenCodeLauncher
             text.FontSize = 12;
             text.Foreground = BrushFromHex("#DCE3EE");
             text.Cursor = Cursors.Hand;
+            text.TextTrimming = TextTrimming.CharacterEllipsis;
+            text.ToolTip = url;
             row.Child = text;
 
             row.MouseEnter += delegate { row.Background = BrushFromHex("#1B222C"); };
@@ -340,23 +495,29 @@ namespace OpenCodeLauncher
 
         private void InvokeAccessUrlAction(string url, bool withCtrl)
         {
-            if (_accessOpenMode)
+            if (withCtrl)
             {
-                if (withCtrl) CopyAccessUrl(url);
-                else OpenPairLinkAsync(url);
-            }
-            else
-            {
-                if (withCtrl)
+                if (_runner.OpenExternalUrl(url))
                 {
-                    if (_runner.OpenExternalUrl(url)) SetAction("已在浏览器打开 " + url);
-                    else SetAction("打开浏览器失败");
+                    if (_accessCodeMode && !string.IsNullOrEmpty(_pairCode))
+                    {
+                        _pairCodeUsed = true;
+                        SetAction("已在浏览器打开一次性链接");
+                        UpdatePairStatus();
+                    }
+                    else
+                    {
+                        SetAction("已在浏览器打开 " + url);
+                    }
                 }
                 else
                 {
-                    CopyAccessUrl(url);
+                    SetAction("打开浏览器失败");
                 }
+                return;
             }
+
+            CopyAccessUrl(url);
         }
 
         private void CopyAccessUrl(string url)
@@ -364,30 +525,11 @@ namespace OpenCodeLauncher
             try
             {
                 Clipboard.SetText(url);
-                SetAction("已复制 " + url);
+                SetAction(_accessCodeMode && !string.IsNullOrEmpty(_pairCode) ? "已复制一次性链接" : "已复制 " + url);
             }
             catch
             {
                 SetAction("复制失败");
-            }
-        }
-
-        private async void OpenPairLinkAsync(string url)
-        {
-            SetAction("正在生成一次性链接: " + url);
-            var commands = new List<string[]>();
-            commands.Add(new[] { "pair", "--url", url });
-            var result = await _runner.RunAsync(_openCodePath, commands, 30000);
-            var pairUrl = GetPairUrl(result.Output);
-            if (!string.IsNullOrEmpty(pairUrl) && _runner.OpenExternalUrl(pairUrl))
-            {
-                SetAction("已在浏览器打开 " + url);
-            }
-            else
-            {
-                Logger.Warn("生成一次性链接失败，改用普通地址: " + result.Output);
-                if (_runner.OpenExternalUrl(url)) SetAction("已打开登录页，请手动输入密码");
-                else SetAction("打开浏览器失败");
             }
         }
 

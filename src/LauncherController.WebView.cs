@@ -331,7 +331,7 @@ namespace OpenCodeLauncher
                 _serviceRawUrl = runtime.Url;
                 _servicePid = runtime.Pid;
                 _urlText.Text = _serviceUrl;
-                _urlText.ToolTip = _serviceUrl;
+                _urlText.ToolTip = AccessHintText;
                 SetUiState(ServiceUiState.Running);
             }
 

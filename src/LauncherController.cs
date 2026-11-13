@@ -41,6 +41,9 @@ namespace OpenCodeLauncher
         private readonly ProcessRunner _runner = new ProcessRunner();
         private readonly DispatcherTimer _timer;
 
+        private static readonly TimeSpan PairCodeLifetime = TimeSpan.FromMinutes(5);
+        private const string AccessHintText = "点击地址复制；Ctrl+点击在浏览器打开。";
+
         private ServiceUiState _serviceState = ServiceUiState.Unknown;
         private string _serviceUrl = string.Empty;
         private string _serviceRawUrl = string.Empty;
@@ -61,8 +64,15 @@ namespace OpenCodeLauncher
         private string _lastError = string.Empty;
         private bool _webViewSuspended;
         private bool _webHidden;
-        private bool _accessOpenMode;
+        private bool _accessCodeMode;
         private bool _syncAccessMode;
+        private string _pairCode = string.Empty;
+        private DateTime? _pairCodeIssuedAt;
+        private bool _pairCodeUsed;
+        private bool _pairCodeBusy;
+        private bool _pairCodeFailed;
+        private int _pairCodeGeneration;
+        private string _lastPairStatusText = string.Empty;
         private string _operation;
         private bool _autoStartAttempted;
         private string _version = string.Empty;
@@ -106,10 +116,14 @@ namespace OpenCodeLauncher
         private StackPanel _accessUrlList;
         private TextBlock _accessHint;
         private Button _accessClose;
-        private ToggleButton _accessOpenModeToggle;
-        private ToggleButton _overlayOpenModeToggle;
-        private TextBlock _accessModeLabel;
-        private TextBlock _overlayAccessModeLabel;
+        private ToggleButton _accessCodeModeToggle;
+        private ToggleButton _overlayCodeModeToggle;
+        private TextBlock _accessCodeLabel;
+        private TextBlock _overlayCodeLabel;
+        private TextBlock _accessPairStatus;
+        private Button _accessRefreshPair;
+        private TextBlock _overlayPairStatus;
+        private Button _overlayRefreshPair;
         private ScrollViewer _overlayAddressScroll;
         private StackPanel _overlayAddressList;
         private TextBlock _overlayAddressHint;
@@ -136,6 +150,7 @@ namespace OpenCodeLauncher
             _application = application;
             AppPaths.EnsureDirectories();
             _config = LauncherConfig.Load();
+            _accessCodeMode = _config.AccessCodeMode;
 
             Window = XamlLoader.LoadWindow(AppPaths.MainWindowXaml);
             Window.Icon = BitmapFrame.Create(new Uri(AppPaths.IconPath));
@@ -210,10 +225,14 @@ namespace OpenCodeLauncher
             _accessUrlList = Find<StackPanel>("AccessUrlList");
             _accessHint = Find<TextBlock>("AccessHint");
             _accessClose = Find<Button>("AccessClose");
-            _accessOpenModeToggle = Find<ToggleButton>("AccessOpenMode");
-            _overlayOpenModeToggle = Find<ToggleButton>("OverlayOpenMode");
-            _accessModeLabel = Find<TextBlock>("AccessModeLabel");
-            _overlayAccessModeLabel = Find<TextBlock>("OverlayAccessModeLabel");
+            _accessCodeModeToggle = Find<ToggleButton>("AccessCodeMode");
+            _overlayCodeModeToggle = Find<ToggleButton>("OverlayCodeMode");
+            _accessCodeLabel = Find<TextBlock>("AccessCodeLabel");
+            _overlayCodeLabel = Find<TextBlock>("OverlayCodeLabel");
+            _accessPairStatus = Find<TextBlock>("AccessPairStatus");
+            _accessRefreshPair = Find<Button>("AccessRefreshPair");
+            _overlayPairStatus = Find<TextBlock>("OverlayPairStatus");
+            _overlayRefreshPair = Find<Button>("OverlayRefreshPair");
             _overlayAddressScroll = Find<ScrollViewer>("OverlayAddressScroll");
             _overlayAddressList = Find<StackPanel>("OverlayAddressList");
             _overlayAddressHint = Find<TextBlock>("OverlayAddressHint");
@@ -499,6 +518,7 @@ namespace OpenCodeLauncher
         private void SetUiState(ServiceUiState state)
         {
             _serviceState = state;
+            if (state != ServiceUiState.Running) ClearPairCode();
             if (_statusText == null) return;
 
             var background = "#1D232C";
@@ -596,6 +616,11 @@ namespace OpenCodeLauncher
                     SetAction("连接超时");
                 }
             }
+
+            if (_accessCodeMode && ((_accessPopup != null && _accessPopup.IsOpen) || _webHidden))
+            {
+                UpdatePairStatus();
+            }
         }
 
         private async void SyncServiceState()
@@ -622,7 +647,7 @@ namespace OpenCodeLauncher
                 _servicePid = state.Pid;
                 _autoStartAttempted = true;
                 _urlText.Text = url;
-                _urlText.ToolTip = url;
+                _urlText.ToolTip = AccessHintText;
 
                 if (changed)
                 {
@@ -631,6 +656,7 @@ namespace OpenCodeLauncher
                     _connectDeadline = null;
                     _pendingUrl = string.Empty;
                     _manualLogin = false;
+                    ClearPairCode();
                 }
 
                 SetUiState(ServiceUiState.Running);
@@ -731,12 +757,16 @@ namespace OpenCodeLauncher
                 _servicePid = state.Pid;
                 _autoStartAttempted = true;
                 _urlText.Text = url;
-                _urlText.ToolTip = url;
+                _urlText.ToolTip = AccessHintText;
                 _lastError = string.Empty;
-                if (_accessPopup.IsOpen) SetAccessPopupContent();
-                if (identityChanged) _connectedUrl = string.Empty;
+                if (identityChanged)
+                {
+                    _connectedUrl = string.Empty;
+                    ClearPairCode();
+                }
                 _serviceGoneCount = 0;
                 if (_serviceState != ServiceUiState.Running) SetUiState(ServiceUiState.Running);
+                if (_accessPopup.IsOpen) SetAccessPopupContent();
                 SetAction("服务运行中 · " + DateTime.Now.ToString("HH:mm:ss"));
                 if (!string.IsNullOrEmpty(_connectedUrl) && !string.Equals(_connectedUrl, url, StringComparison.Ordinal)) _connectedUrl = string.Empty;
                 if (_webHidden) ShowHiddenPlaceholder();
