@@ -27,6 +27,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Resolve version
         id: version
@@ -47,6 +50,38 @@ jobs:
           }
           Set-Content -LiteralPath 'VERSION' -Value $version -Encoding ASCII -NoNewline
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
+
+      - name: Collect commits since previous tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: powershell
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $tags = @(& git tag --merged $tag --sort=-version:refname)
+          if ($LASTEXITCODE -ne 0) { throw 'git tag failed' }
+          $previous = ''
+          foreach ($candidate in $tags) {
+            if ($candidate -and $candidate -ne $tag) { $previous = $candidate; break }
+          }
+          $range = $tag
+          if ($previous) { $range = "$previous..$tag" }
+
+          $lines = @(& git log "--pretty=format:- %h %s" $range)
+          if ($LASTEXITCODE -ne 0) { throw "git log failed for range $range" }
+
+          $notes = @('## Commits', '')
+          if ($lines.Count -eq 0) {
+            $notes += '_No commits in this range._'
+          } else {
+            $notes += $lines
+          }
+          $notes += @('', "Range: $range")
+
+          New-Item -ItemType Directory -Path 'dist' -Force | Out-Null
+          [System.IO.File]::WriteAllText(
+            (Join-Path (Get-Location) 'dist\RELEASE_NOTES.md'),
+            (($notes -join "`n") + "`n"),
+            (New-Object System.Text.UTF8Encoding($false))
+          )
 
       - name: Install Inno Setup 6
         id: inno
@@ -119,5 +154,7 @@ jobs:
             dist/OpenCodeLauncher-${{ steps.version.outputs.version }}-*.zip
             dist/OpenCodeLauncher-${{ steps.version.outputs.version }}-*.exe
             dist/OpenCodeLauncher-${{ steps.version.outputs.version }}-*.sha256
+          body_path: dist/RELEASE_NOTES.md
+          append_body: true
           generate_release_notes: true
           fail_on_unmatched_files: true
