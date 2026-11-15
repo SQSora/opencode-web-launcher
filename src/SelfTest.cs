@@ -41,6 +41,7 @@ namespace OpenCodeLauncher
 
             RunProcessTests(failures);
             RunConfigTests(failures);
+            RunConfigLocationTests(failures);
 
             try
             {
@@ -199,6 +200,47 @@ namespace OpenCodeLauncher
                 {
                     foreach (var file in Directory.GetFiles(directory)) File.Delete(file);
                     Directory.Delete(directory, false);
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private static void RunConfigLocationTests(List<string> failures)
+        {
+            var root = Path.Combine(Path.GetTempPath(), "oc-launcher-location-selftest-" + Guid.NewGuid().ToString("N"));
+            var sourceDir = Path.Combine(root, "source");
+            var targetDir = Path.Combine(root, "target");
+            var source = Path.Combine(sourceDir, "config.json");
+            var target = Path.Combine(targetDir, "config.json");
+            try
+            {
+                Directory.CreateDirectory(sourceDir);
+                Directory.CreateDirectory(targetDir);
+                File.WriteAllText(source, "{\"autoStart\":false}", new UTF8Encoding(false));
+                Check(failures, AppPaths.CanWriteTo(sourceDir), "config location: writable directory");
+                Check(failures, !AppPaths.CanWriteTo(source), "config location: file path rejected");
+                Check(failures, string.Equals(AppPaths.ConfigPathFor(sourceDir), source, StringComparison.Ordinal), "config location: config path");
+
+                Check(failures, AppPaths.MigrateConfig(source, target), "config location: migrate legacy config");
+                Check(failures, File.ReadAllText(target, Encoding.UTF8).Contains("\"autoStart\":false"), "config location: migrated content");
+                Check(failures, !AppPaths.MigrateConfig(source, target), "config location: keep existing config");
+            }
+            catch (Exception ex)
+            {
+                failures.Add("config location: " + ex.Message);
+            }
+            finally
+            {
+                try
+                {
+                    foreach (var directory in new[] { sourceDir, targetDir, root })
+                    {
+                        if (!Directory.Exists(directory)) continue;
+                        foreach (var file in Directory.GetFiles(directory)) File.Delete(file);
+                        Directory.Delete(directory, false);
+                    }
                 }
                 catch
                 {

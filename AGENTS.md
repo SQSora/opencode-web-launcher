@@ -71,7 +71,7 @@ tools/
 - When adding/renaming/removing a control, update `LauncherController.LoadControls` (`FindName` fields) **and** the relevant `SelfTest` name list. The self-test deliberately fails if controls are missing.
 - WebView2 SDK assemblies live in `app\lib`; `Program.ResolveAssembly` and `Native.AddLibraryDirectory` depend on that location. Do not move them or introduce NuGet. Use `tools\Update-WebView2.ps1` if the SDK must be updated.
 - The single-instance mutex `Local\OpenCodeLauncher_7F3A9C21` is duplicated as `AppMutex` in `installer\OpenCodeLauncherCSharp.iss`; keep both in sync.
-- Debug from `%LOCALAPPDATA%\OpenCodeLauncher\launcher.log`; config is `%APPDATA%\OpenCodeLauncher\config.json`; service config/state are under `%USERPROFILE%\.config\opencode` and `.local\state\opencode`.
+- Debug from `%LOCALAPPDATA%\OpenCodeLauncher\launcher.log`; Launcher config is `config.json` in the program directory, falling back to `%APPDATA%\OpenCodeLauncher\config.json` when that directory is not writable; service config/state are under `%USERPROFILE%\.config\opencode` and `.local\state\opencode`.
 
 ## OpenCode integration and safety
 

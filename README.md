@@ -47,7 +47,7 @@
 | CORS 来源 | 多个地址用英文逗号分隔 |
 | opencode 路径 | 自动探测失败时手动指定 `opencode.exe`、`opencode.cmd` 或 `opencode.ps1` |
 
-程序级设置保存在 `%APPDATA%\OpenCodeLauncher\config.json`：
+程序级设置默认保存在程序目录的 `config.json`，便于免安装版随程序一起拷贝；程序目录不可写时会提示选择，默认回退到 `%APPDATA%\OpenCodeLauncher\config.json`：
 
 - 启动 Launcher 时自动启动后台服务
 - 关闭窗口时最小化到系统托盘
@@ -60,7 +60,8 @@
 
 | 内容 | 位置 |
 | --- | --- |
-| Launcher 配置 | `%APPDATA%\OpenCodeLauncher\config.json` |
+| Launcher 配置 | 程序目录 `config.json`（不可写时为 `%APPDATA%\OpenCodeLauncher\config.json`） |
+| Launcher 配置目录记录 | `%LOCALAPPDATA%\OpenCodeLauncher\config-dir.txt`、`config-migrated.txt` |
 | 运行日志 | `%LOCALAPPDATA%\OpenCodeLauncher\launcher.log` |
 | WebView2 用户数据（含登录 Cookie） | `%LOCALAPPDATA%\OpenCodeLauncher\WebView2-<会话ID>` |
 | OpenCode 服务配置 | `%USERPROFILE%\.config\opencode\service.json` |

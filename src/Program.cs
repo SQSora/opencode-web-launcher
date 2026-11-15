@@ -53,6 +53,8 @@ namespace OpenCodeLauncher
 
                 try
                 {
+                    AppPaths.EnsureDirectories();
+                    ConfigLocation.Resolve();
                     var app = new LauncherApp();
                     app.Run(app.MainWindow);
                 }
